@@ -19,12 +19,32 @@ import {
 import {
   copyText,
   createBadgeSvg,
+  downloadRasterizedSvg,
   downloadSvg
 } from "./svg.js";
 
 const MAX_SUGGESTIONS = 8;
 const RECENT_COUNTRIES_KEY =
   "country-badge-generator.recent-countries.v1";
+
+const OUTPUT_FORMATS = {
+  svg: {
+    extension: "svg",
+    label: "SVG",
+    mimeType: "image/svg+xml"
+  },
+  png: {
+    extension: "png",
+    label: "PNG",
+    mimeType: "image/png"
+  },
+  jpg: {
+    extension: "jpg",
+    label: "JPG",
+    mimeType: "image/jpeg",
+    quality: 0.92
+  }
+};
 
 const elements = {
   input: document.querySelector("#country-search"),
@@ -37,7 +57,9 @@ const elements = {
   selectedColor: document.querySelector("#selected-color"),
   selectedSwatch: document.querySelector("#selected-swatch"),
   outputName: document.querySelector("#output-name"),
+  formatOptions: document.querySelector("#format-options"),
   downloadButton: document.querySelector("#download-button"),
+  downloadLabel: document.querySelector("#download-label"),
   copyButton: document.querySelector("#copy-button"),
   status: document.querySelector("#status-message"),
   preview: document.querySelector("#preview-canvas"),
@@ -55,6 +77,7 @@ const state = {
   palette: [],
   selectedPaletteIndex: 0,
   selectedSvg: "",
+  outputFormat: "svg",
   outputFileName: "",
   requestId: 0,
   countryCache: new Map(),
@@ -99,6 +122,49 @@ function setLoading(isLoading) {
     isLoading || !state.selectedSvg;
 }
 
+function getOutputFormat() {
+  return (
+    OUTPUT_FORMATS[state.outputFormat] ??
+    OUTPUT_FORMATS.svg
+  );
+}
+
+function refreshOutputDetails() {
+  const format = getOutputFormat();
+
+  elements.formatOptions
+    .querySelectorAll(".format-option")
+    .forEach(option => {
+      const input = option.querySelector(
+        'input[name="output-format"]'
+      );
+
+      if (input) {
+        input.checked =
+          input.value === state.outputFormat;
+      }
+
+      option.dataset.selected = String(
+        input?.value === state.outputFormat
+      );
+    });
+
+  elements.downloadLabel.textContent =
+    `Download ${format.label}`;
+
+  if (!state.selectedCountry) {
+    state.outputFileName = "";
+    elements.outputName.textContent = "--";
+    return;
+  }
+
+  state.outputFileName =
+    `${state.selectedCountry.code}.${format.extension}`;
+
+  elements.outputName.textContent =
+    state.outputFileName;
+}
+
 function removeRenderedPreview() {
   elements.preview
     .querySelector(":scope > svg")
@@ -119,7 +185,6 @@ function resetGeneratedState() {
   state.palette = [];
   state.selectedPaletteIndex = 0;
   state.selectedSvg = "";
-  state.outputFileName = "";
 
   removeRenderedPreview();
 
@@ -128,9 +193,9 @@ function resetGeneratedState() {
   elements.selectedColor.textContent = "--";
   elements.selectedSwatch.style.backgroundColor =
     "transparent";
-  elements.outputName.textContent = "--";
   elements.downloadButton.disabled = true;
   elements.copyButton.disabled = true;
+  refreshOutputDetails();
 
   renderEmptyPalette(
     "Select a country to generate its palette."
@@ -439,9 +504,6 @@ function updateSelectedOption(index) {
   }
 
   state.selectedPaletteIndex = index;
-  state.outputFileName =
-    `${state.selectedCountry.code}.svg`;
-
   state.selectedSvg = createBadgeSvg({
     code: state.selectedCountry.code,
     countryName: state.selectedCountry.name,
@@ -464,8 +526,7 @@ function updateSelectedOption(index) {
   elements.selectedSwatch.style.backgroundColor =
     option.hex;
 
-  elements.outputName.textContent =
-    state.outputFileName;
+  refreshOutputDetails();
 
   elements.downloadButton.disabled = false;
   elements.copyButton.disabled = false;
@@ -667,6 +728,73 @@ function handleCountryInput() {
   updateCountrySuggestions();
 }
 
+function handleFormatChange(event) {
+  const format = event.target.closest(
+    'input[name="output-format"]'
+  );
+
+  if (!format || !OUTPUT_FORMATS[format.value]) {
+    return;
+  }
+
+  state.outputFormat = format.value;
+  refreshOutputDetails();
+
+  if (state.selectedCountry) {
+    setStatus(
+      `${getOutputFormat().label} is selected for download.`,
+      "success"
+    );
+  }
+}
+
+async function downloadSelectedOutput() {
+  if (
+    !state.selectedSvg ||
+    !state.outputFileName
+  ) {
+    return;
+  }
+
+  const format = getOutputFormat();
+  elements.downloadButton.disabled = true;
+
+  try {
+    if (state.outputFormat === "svg") {
+      downloadSvg(
+        state.outputFileName,
+        state.selectedSvg
+      );
+    } else {
+      setStatus(
+        `Preparing ${format.label} download...`
+      );
+
+      await downloadRasterizedSvg({
+        fileName: state.outputFileName,
+        svgText: state.selectedSvg,
+        mimeType: format.mimeType,
+        quality: format.quality
+      });
+    }
+
+    setStatus(
+      `Downloaded ${state.outputFileName}.`,
+      "success"
+    );
+  } catch (error) {
+    setStatus(
+      error instanceof Error
+        ? error.message
+        : `${format.label} could not be downloaded in this browser.`,
+      "error"
+    );
+  } finally {
+    elements.downloadButton.disabled =
+      !state.selectedSvg;
+  }
+}
+
 function validateFreeText() {
   if (
     !state.selectedCountry &&
@@ -840,26 +968,14 @@ function bindEvents() {
     }
   );
 
+  elements.formatOptions.addEventListener(
+    "change",
+    handleFormatChange
+  );
+
   elements.downloadButton.addEventListener(
     "click",
-    () => {
-      if (
-        !state.selectedSvg ||
-        !state.outputFileName
-      ) {
-        return;
-      }
-
-      downloadSvg(
-        state.outputFileName,
-        state.selectedSvg
-      );
-
-      setStatus(
-        `Downloaded ${state.outputFileName}.`,
-        "success"
-      );
-    }
+    downloadSelectedOutput
   );
 
   elements.copyButton.addEventListener(

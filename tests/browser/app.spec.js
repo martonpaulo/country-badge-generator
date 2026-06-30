@@ -69,6 +69,13 @@ async function selectCountry(page, query, code) {
   await expect(page.locator("#output-name")).toHaveText(`${code}.svg`);
 }
 
+async function downloadCurrentFile(page) {
+  return Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#download-button").click()
+  ]).then(([downloadEvent]) => downloadEvent);
+}
+
 async function getPaletteHexes(page) {
   return page.locator(".palette-hex").evaluateAll(elements =>
     elements.map(element => element.textContent.trim())
@@ -195,10 +202,7 @@ test("generates deterministic palettes, previews every option, and downloads sel
 
     expect(previewColors).toEqual(hexes);
 
-    const download = await Promise.all([
-      page.waitForEvent("download"),
-      page.locator("#download-button").click()
-    ]).then(([downloadEvent]) => downloadEvent);
+    const download = await downloadCurrentFile(page);
 
     expect(download.suggestedFilename()).toBe(`${country.code}.svg`);
 
@@ -209,9 +213,43 @@ test("generates deterministic palettes, previews every option, and downloads sel
 
     expect(svgText).toContain('viewBox="0 0 1024 1024"');
     expect(svgText).toContain(`fill="${hexes[2]}"`);
+    expect(svgText).toContain('width="558"');
+    expect(svgText).toContain('height="351"');
     expect(svgText).toContain("data:image/svg+xml;base64,");
     expect(svgText).not.toMatch(/href="https?:\/\//);
   }
+
+  await page.locator("#clear-search").click();
+  await selectCountry(page, "Brazil", "BR");
+
+  await page.getByLabel("PNG").check();
+  await expect(page.locator("#output-name")).toHaveText("BR.png");
+  await expect(page.locator("#download-label")).toHaveText("Download PNG");
+
+  const pngDownload = await downloadCurrentFile(page);
+  expect(pngDownload.suggestedFilename()).toBe("BR.png");
+
+  const pngPath = await pngDownload.path();
+  const pngBytes = await import("node:fs/promises").then(fs =>
+    fs.readFile(pngPath)
+  );
+
+  expect(pngBytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+
+  await page.getByLabel("JPG").check();
+  await expect(page.locator("#output-name")).toHaveText("BR.jpg");
+  await expect(page.locator("#download-label")).toHaveText("Download JPG");
+
+  const jpgDownload = await downloadCurrentFile(page);
+  expect(jpgDownload.suggestedFilename()).toBe("BR.jpg");
+
+  const jpgPath = await jpgDownload.path();
+  const jpgBytes = await import("node:fs/promises").then(fs =>
+    fs.readFile(jpgPath)
+  );
+
+  expect(jpgBytes.subarray(0, 2).toString("hex")).toBe("ffd8");
+  await page.getByLabel("SVG").check();
 
   await page.locator("#clear-search").click();
   await selectCountry(page, "Brazil", "BR");

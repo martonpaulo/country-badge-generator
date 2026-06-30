@@ -1,6 +1,6 @@
 # Country Badge Generator
 
-A fully static GitHub Pages app for creating square SVG country badges. Search a country, select it from the combobox, compare three deterministic flag-inspired background colors, and download the selected 1024 x 1024 SVG.
+A fully static GitHub Pages app for creating square country badges. Search a country, select it from the combobox, compare three deterministic flag-inspired background colors, and download the selected 1024 x 1024 SVG, PNG, or JPG.
 
 ## Features
 
@@ -8,7 +8,7 @@ A fully static GitHub Pages app for creating square SVG country badges. Search a
 - Accessible combobox with pointer and keyboard navigation
 - Exactly three deterministic color options for each country
 - Click-to-preview palette options
-- Manual SVG download using the `BR.svg` filename format
+- Manual SVG, PNG, and JPG download using filenames such as `BR.svg`, `BR.png`, and `BR.jpg`
 - Copy the current SVG to the clipboard when the browser allows it
 - Self-contained exported SVG with embedded flag artwork
 - Compact responsive interface for desktop and mobile
@@ -120,4 +120,5 @@ Deployment requirements:
 - Free text is never treated as a valid country.
 - If a flag cannot load, is blocked by CORS, or returns malformed SVG, generation fails with an explicit status message.
 - If canvas is unavailable, palette generation fails with an explicit status message.
+- If image export is unavailable, PNG and JPG downloads fail with an explicit status message.
 - If clipboard write is unavailable or blocked, the app reports the copy failure without affecting manual download.

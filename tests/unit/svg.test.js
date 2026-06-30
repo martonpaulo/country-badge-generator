@@ -20,6 +20,10 @@ test("generated badge SVG is self-contained and accessible", () => {
   assert.match(svg, /<title id="badge-br-title">Brazil country badge<\/title>/);
   assert.match(svg, /<desc id="badge-br-description">BR flag centered/);
   assert.match(svg, /href="data:image\/svg\+xml;base64,/);
+  assert.match(svg, /x="233"/);
+  assert.match(svg, /y="336\.5"/);
+  assert.match(svg, /width="558"/);
+  assert.match(svg, /height="351"/);
   assert.doesNotMatch(svg, /href="https?:\/\//);
 });
 
