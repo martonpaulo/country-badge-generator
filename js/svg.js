@@ -1,4 +1,4 @@
-const SVG_SIZE = 1024;
+export const SVG_SIZE = 1024;
 const FLAG_BOX_WIDTH = 620;
 const FLAG_BOX_HEIGHT = 390;
 
@@ -32,11 +32,15 @@ export function createBadgeSvg({
   code,
   countryName,
   flagSvgText,
-  backgroundHex
+  backgroundHex,
+  idPrefix = `badge-${code.toLowerCase()}`
 }) {
   const flagX = (SVG_SIZE - FLAG_BOX_WIDTH) / 2;
   const flagY = (SVG_SIZE - FLAG_BOX_HEIGHT) / 2;
   const flagData = textToBase64(flagSvgText);
+  const titleId = `${idPrefix}-title`;
+  const descriptionId = `${idPrefix}-description`;
+  const shadowId = `${idPrefix}-flag-shadow`;
 
   return `<svg
   xmlns="http://www.w3.org/2000/svg"
@@ -44,14 +48,14 @@ export function createBadgeSvg({
   height="${SVG_SIZE}"
   viewBox="0 0 ${SVG_SIZE} ${SVG_SIZE}"
   role="img"
-  aria-labelledby="title description"
+  aria-labelledby="${titleId} ${descriptionId}"
 >
-  <title id="title">${escapeXml(countryName)} country badge</title>
-  <desc id="description">${escapeXml(code)} flag centered on a deterministic flag-inspired background.</desc>
+  <title id="${titleId}">${escapeXml(countryName)} country badge</title>
+  <desc id="${descriptionId}">${escapeXml(code)} flag centered on a deterministic flag-inspired background.</desc>
 
   <defs>
     <filter
-      id="flag-shadow"
+      id="${shadowId}"
       x="-35%"
       y="-45%"
       width="170%"
@@ -81,7 +85,7 @@ export function createBadgeSvg({
     width="${FLAG_BOX_WIDTH}"
     height="${FLAG_BOX_HEIGHT}"
     preserveAspectRatio="xMidYMid meet"
-    filter="url(#flag-shadow)"
+    filter="url(#${shadowId})"
   />
 </svg>`;
 }

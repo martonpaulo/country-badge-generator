@@ -1,83 +1,133 @@
-const COUNTRY_CODES = ["AD","AE","AF","AG","AI","AL","AM","AO","AQ","AR","AS","AT","AU","AW","AX","AZ","BA","BB","BD","BE","BF","BG","BH","BI","BJ","BL","BM","BN","BO","BQ","BR","BS","BT","BV","BW","BY","BZ","CA","CC","CD","CF","CG","CH","CI","CK","CL","CM","CN","CO","CR","CU","CV","CW","CX","CY","CZ","DE","DJ","DK","DM","DO","DZ","EC","EE","EG","EH","ER","ES","ET","FI","FJ","FK","FM","FO","FR","GA","GB","GD","GE","GF","GG","GH","GI","GL","GM","GN","GP","GQ","GR","GS","GT","GU","GW","GY","HK","HM","HN","HR","HT","HU","ID","IE","IL","IM","IN","IO","IQ","IR","IS","IT","JE","JM","JO","JP","KE","KG","KH","KI","KM","KN","KP","KR","KW","KY","KZ","LA","LB","LC","LI","LK","LR","LS","LT","LU","LV","LY","MA","MC","MD","ME","MF","MG","MH","MK","ML","MM","MN","MO","MP","MQ","MR","MS","MT","MU","MV","MW","MX","MY","MZ","NA","NC","NE","NF","NG","NI","NL","NO","NP","NR","NU","NZ","OM","PA","PE","PF","PG","PH","PK","PL","PM","PN","PR","PS","PT","PW","PY","QA","RE","RO","RS","RU","RW","SA","SB","SC","SD","SE","SG","SH","SI","SJ","SK","SL","SM","SN","SO","SR","SS","ST","SV","SX","SY","SZ","TC","TD","TF","TG","TH","TJ","TK","TL","TM","TN","TO","TR","TT","TV","TW","TZ","UA","UG","UM","US","UY","UZ","VA","VC","VE","VG","VI","VN","VU","WF","WS","YE","YT","ZA","ZM","ZW"];
-
-const COUNTRY_ALIASES = {
-  BO: ["Bolivia"],
-  BN: ["Brunei"],
-  CD: ["DR Congo", "Democratic Republic of the Congo", "Congo-Kinshasa"],
-  CG: ["Republic of the Congo", "Congo-Brazzaville"],
-  CI: ["Ivory Coast"],
-  CZ: ["Czech Republic"],
-  GB: ["United Kingdom", "UK", "Great Britain"],
-  IR: ["Iran"],
-  KR: ["South Korea"],
-  KP: ["North Korea"],
-  LA: ["Laos"],
-  MD: ["Moldova"],
-  PS: ["Palestine"],
-  RU: ["Russia"],
-  SY: ["Syria"],
-  SZ: ["Eswatini", "Swaziland"],
-  TZ: ["Tanzania"],
-  TR: ["Türkiye", "Turkey"],
-  TW: ["Taiwan"],
-  US: ["United States", "USA", "United States of America"],
-  VA: ["Vatican City"],
-  VE: ["Venezuela"],
-  VN: ["Vietnam"]
-};
-
-function createDisplayNames() {
-  try {
-    return new Intl.DisplayNames(["en"], { type: "region" });
-  } catch {
-    return null;
-  }
-}
+const collator = new Intl.Collator("en", {
+  sensitivity: "base",
+  numeric: true
+});
 
 export function normalizeSearch(value) {
-  return value
+  return String(value ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u2019']/g, "")
+    .replace(/[^\p{Letter}\p{Number}]+/gu, " ")
     .toLowerCase()
-    .trim();
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 export function countryCodeToEmoji(code) {
   return [...code]
     .map(character =>
-      String.fromCodePoint(127397 + character.charCodeAt(0))
+      String.fromCodePoint(
+        127397 + character.charCodeAt(0)
+      )
     )
     .join("");
 }
 
-export function createCountryCatalog() {
-  const displayNames = createDisplayNames();
-  const collator = new Intl.Collator("en", {
-    sensitivity: "base",
-    numeric: true
-  });
+function getEnglishDemonym(country) {
+  const demonyms = country?.demonyms?.eng;
 
-  return COUNTRY_CODES
-    .map(code => {
-      const name = displayNames?.of(code) ?? code;
-      const aliases = COUNTRY_ALIASES[code] ?? [];
+  return [
+    demonyms?.f,
+    demonyms?.m
+  ].filter(Boolean);
+}
 
-      return {
-        code,
-        emoji: countryCodeToEmoji(code),
-        name,
-        searchTerms: [name, code, ...aliases]
-          .map(normalizeSearch)
-          .filter(Boolean)
-      };
-    })
+function getNativeNames(country) {
+  return Object.values(
+    country?.name?.native ?? {}
+  ).flatMap(name => [
+    name?.common,
+    name?.official
+  ]);
+}
+
+function getTranslationNames(country) {
+  return Object.values(
+    country?.translations ?? {}
+  ).flatMap(name => [
+    name?.common,
+    name?.official
+  ]);
+}
+
+function createSearchTerms(country) {
+  return [
+    country.name.common,
+    country.name.official,
+    country.cca2,
+    country.cca3,
+    country.cioc,
+    ...(country.altSpellings ?? []),
+    ...getEnglishDemonym(country),
+    ...getNativeNames(country),
+    ...getTranslationNames(country)
+  ]
+    .map(normalizeSearch)
+    .filter(Boolean);
+}
+
+function normalizeCountry(country) {
+  const code = String(country?.cca2 ?? "")
+    .trim()
+    .toUpperCase();
+
+  const commonName =
+    String(country?.name?.common ?? "").trim();
+
+  if (!/^[A-Z]{2}$/.test(code) || !commonName) {
+    return null;
+  }
+
+  const officialName =
+    String(country?.name?.official ?? "").trim();
+
+  return {
+    code,
+    emoji: countryCodeToEmoji(code),
+    name: commonName,
+    officialName,
+    population:
+      Number.isFinite(country.population)
+        ? country.population
+        : 0,
+    altSpellings: Array.isArray(country.altSpellings)
+      ? country.altSpellings.filter(Boolean)
+      : [],
+    flagUrl: `https://flagcdn.com/${code.toLowerCase()}.svg`,
+    searchTerms: [...new Set(createSearchTerms(country))]
+  };
+}
+
+export function createCountryCatalog(
+  payload,
+  { minCountries = 100 } = {}
+) {
+  if (!Array.isArray(payload)) {
+    throw new Error(
+      "The country list returned an unsupported format."
+    );
+  }
+
+  const countries = payload
+    .map(normalizeCountry)
+    .filter(Boolean)
     .sort((first, second) =>
       collator.compare(first.name, second.name)
     );
+
+  if (countries.length < minCountries) {
+    throw new Error(
+      "The country list did not include enough supported countries."
+    );
+  }
+
+  return countries;
 }
 
 function scoreCountry(country, normalizedQuery) {
-  const normalizedCode = country.code.toLowerCase();
+  const normalizedCode =
+    country.code.toLowerCase();
 
   if (normalizedCode === normalizedQuery) {
     return 0;
@@ -108,7 +158,11 @@ function scoreCountry(country, normalizedQuery) {
   return bestScore;
 }
 
-export function searchCountries(catalog, query, limit = 8) {
+export function searchCountries(
+  catalog,
+  query,
+  limit = 8
+) {
   const normalizedQuery = normalizeSearch(query);
 
   if (!normalizedQuery) {
@@ -118,13 +172,74 @@ export function searchCountries(catalog, query, limit = 8) {
   return catalog
     .map(country => ({
       country,
-      score: scoreCountry(country, normalizedQuery)
+      score: scoreCountry(
+        country,
+        normalizedQuery
+      )
     }))
-    .filter(result => Number.isFinite(result.score))
+    .filter(result =>
+      Number.isFinite(result.score)
+    )
     .sort((first, second) =>
       first.score - second.score ||
-      first.country.name.localeCompare(second.country.name)
+      collator.compare(
+        first.country.name,
+        second.country.name
+      )
     )
     .slice(0, limit)
     .map(result => result.country);
+}
+
+export function getCountryByCode(catalog, code) {
+  const normalizedCode = String(code ?? "")
+    .trim()
+    .toUpperCase();
+
+  return (
+    catalog.find(country =>
+      country.code === normalizedCode
+    ) ?? null
+  );
+}
+
+export function getDefaultSuggestions(
+  catalog,
+  recentCodes = [],
+  limit = 8
+) {
+  const seen = new Set();
+  const suggestions = [];
+
+  for (const code of recentCodes) {
+    const country = getCountryByCode(catalog, code);
+
+    if (country && !seen.has(country.code)) {
+      suggestions.push(country);
+      seen.add(country.code);
+    }
+
+    if (suggestions.length === limit) {
+      return suggestions;
+    }
+  }
+
+  const defaultPool = [...catalog].sort(
+    (first, second) =>
+      second.population - first.population ||
+      collator.compare(first.name, second.name)
+  );
+
+  for (const country of defaultPool) {
+    if (!seen.has(country.code)) {
+      suggestions.push(country);
+      seen.add(country.code);
+    }
+
+    if (suggestions.length === limit) {
+      break;
+    }
+  }
+
+  return suggestions;
 }

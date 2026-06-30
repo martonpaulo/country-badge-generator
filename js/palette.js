@@ -223,7 +223,7 @@ function channelToHex(channel) {
   return channel.toString(16).padStart(2, "0");
 }
 
-function rgbToHex({ r, g, b }) {
+export function rgbToHex({ r, g, b }) {
   return (
     "#" +
     channelToHex(r) +
@@ -232,7 +232,7 @@ function rgbToHex({ r, g, b }) {
   ).toUpperCase();
 }
 
-function colorDistance(first, second) {
+export function colorDistance(first, second) {
   const firstLab = rgbToOklab(first);
   const secondLab = rgbToOklab(second);
 
@@ -540,15 +540,12 @@ function scoreBackground(
   const candidateLightness =
     rgbToOklch(candidateRgb).l;
 
+  const lightnessDelta =
+    (candidateLightness - targetLightness) /
+    0.17;
+
   const lightnessPreference =
-    Math.exp(
-      -(
-        (
-          candidateLightness -
-          targetLightness
-        ) / 0.17
-      ) ** 2
-    );
+    Math.exp(-(lightnessDelta ** 2));
 
   return (
     clamp(lowerContrast / 4.5, 0, 1) * 0.22 +

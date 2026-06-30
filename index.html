@@ -6,9 +6,9 @@
 
   <meta
     name="description"
-    content="Generate deterministic SVG country badges with three beautiful flag-inspired background options."
+    content="Generate deterministic SVG country badges with three flag-inspired background options."
   >
-  <meta name="theme-color" content="#08111f">
+  <meta name="theme-color" content="#f6f7fb">
 
   <title>Country Badge Generator</title>
 
@@ -23,29 +23,28 @@
   <header class="site-header">
     <a class="brand" href="./" aria-label="Country Badge Generator home">
       <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24">
-          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-13Zm2 0v9.18l2.64-2.64a2 2 0 0 1 2.83 0l.98.98 2.59-3.1a2 2 0 0 1 3.07 0L18 10.05V5.5a.5.5 0 0 0-.5-.5h-11a.5.5 0 0 0-.5.5Zm12 7.67-1.42-1.7-2.59 3.1a2 2 0 0 1-2.95.11l-.98-.98L6 17.76v.74a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-5.33ZM9.25 8.25a1.75 1.75 0 1 1-3.5 0 1.75 1.75 0 0 1 3.5 0Z"/>
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-13Zm2 0v9.18l2.64-2.64a2 2 0 0 1 2.83 0l.98.98 2.59-3.1a2 2 0 0 1 3.07 0L18 10.05V5.5a.5.5 0 0 0-.5-.5h-11a.5.5 0 0 0-.5.5Zm12 7.67-1.42-1.7-2.59 3.1a2 2 0 0 1-2.95.11l-.98-.98L6 17.76v.74a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-5.33Z"/>
         </svg>
       </span>
 
       <span>Country Badge Generator</span>
     </a>
 
-    <span class="header-tag">Deterministic palettes</span>
+    <span class="header-note">Static SVG utility</span>
   </header>
 
-  <main id="main-content" class="page-shell">
-    <section class="hero" aria-labelledby="page-title">
-      <p class="eyebrow">Flag-inspired SVG generator</p>
+  <main id="main-content" class="app-shell">
+    <section class="intro" aria-labelledby="page-title">
+      <div>
+        <h1 id="page-title">Create a country badge</h1>
+        <p>
+          Search a country, choose one of three deterministic flag-inspired backgrounds,
+          and download a self-contained 1024 x 1024 SVG.
+        </p>
+      </div>
 
-      <h1 id="page-title">
-        One country. Three consistent color options.
-      </h1>
-
-      <p class="hero-copy">
-        Search for a country, select it from the list, compare three deterministic
-        backgrounds inspired by its flag, then download the selected SVG.
-      </p>
+      <span class="source-note">Data and flags from FlagCDN</span>
     </section>
 
     <section class="workspace" aria-label="Country badge generator">
@@ -55,7 +54,7 @@
 
           <div class="combobox">
             <span class="search-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
+              <svg viewBox="0 0 24 24" focusable="false">
                 <path d="m20.7 19.3-4.15-4.15a7.5 7.5 0 1 0-1.4 1.4l4.15 4.15a1 1 0 0 0 1.4-1.4ZM5 10.5a5.5 5.5 0 1 1 11 0 5.5 5.5 0 0 1-11 0Z"/>
               </svg>
             </span>
@@ -67,10 +66,12 @@
               aria-autocomplete="list"
               aria-expanded="false"
               aria-controls="country-options"
-              aria-describedby="country-help"
+              aria-describedby="country-help country-status"
               autocomplete="off"
+              autocapitalize="none"
               spellcheck="false"
-              placeholder="Search Brazil, Paraguay, Spain…"
+              placeholder="Search Brazil, Paraguay, Spain, BR..."
+              disabled
             >
 
             <button
@@ -80,7 +81,7 @@
               aria-label="Clear country selection"
               hidden
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M6.3 6.3a1 1 0 0 1 1.4 0L12 10.6l4.3-4.3a1 1 0 1 1 1.4 1.4L13.4 12l4.3 4.3a1 1 0 0 1-1.4 1.4L12 13.4l-4.3 4.3a1 1 0 0 1-1.4-1.4l4.3-4.3-4.3-4.3a1 1 0 0 1 0-1.4Z"/>
               </svg>
             </button>
@@ -95,28 +96,31 @@
           </div>
 
           <p id="country-help" class="field-help">
-            Type a country name or ISO code, then choose a result.
+            Select a listed result. Typed text alone is not a valid country.
+          </p>
+          <p id="country-status" class="field-status" aria-live="polite">
+            Loading countries...
           </p>
         </div>
 
         <section class="palette-section" aria-labelledby="palette-title">
           <div class="section-heading">
             <div>
-              <p class="section-kicker">Background palette</p>
-              <h2 id="palette-title">Choose one option</h2>
+              <h2 id="palette-title">Background options</h2>
+              <p>Three stable colors for the selected country.</p>
             </div>
 
-            <span id="palette-country-code" class="code-pill">—</span>
+            <span id="palette-country-code" class="code-pill">--</span>
           </div>
 
           <div id="palette-options" class="palette-options">
-            <div class="palette-empty">
-              Select a country to generate its three color options.
+            <div class="empty-state">
+              Select a country to generate its palette.
             </div>
           </div>
         </section>
 
-        <div class="selection-details" aria-live="polite">
+        <section class="selection-details" aria-label="Current selection">
           <div class="detail-row">
             <span>Country</span>
             <strong id="selected-country">None</strong>
@@ -127,15 +131,15 @@
 
             <span class="selected-color">
               <span id="selected-swatch" class="selected-swatch" aria-hidden="true"></span>
-              <strong id="selected-color">—</strong>
+              <strong id="selected-color">--</strong>
             </span>
           </div>
 
           <div class="detail-row">
             <span>Output</span>
-            <strong id="output-name">—</strong>
+            <strong id="output-name">--</strong>
           </div>
-        </div>
+        </section>
 
         <div class="actions">
           <button
@@ -144,10 +148,9 @@
             type="button"
             disabled
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M11 3a1 1 0 1 1 2 0v10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-5 5a1 1 0 0 1-1.4 0l-5-5a1 1 0 1 1 1.4-1.4l3.3 3.3V3Zm-6 16a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1Z"/>
             </svg>
-
             Download SVG
           </button>
 
@@ -157,10 +160,9 @@
             type="button"
             disabled
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M8.5 3A2.5 2.5 0 0 0 6 5.5V6h-.5A2.5 2.5 0 0 0 3 8.5v10A2.5 2.5 0 0 0 5.5 21h8a2.5 2.5 0 0 0 2.5-2.5V18h.5a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 16.5 3h-8ZM16 16V8.5A2.5 2.5 0 0 0 13.5 6H8v-.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-.5.5H16ZM5 8.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-10Z"/>
             </svg>
-
             Copy SVG
           </button>
         </div>
@@ -171,81 +173,38 @@
           role="status"
           aria-live="polite"
         >
-          Choose a country to begin.
+          Loading countries...
         </p>
       </div>
 
       <section class="preview-panel" aria-labelledby="preview-title">
         <div class="preview-heading">
           <div>
-            <p class="section-kicker">Live preview</p>
-            <h2 id="preview-title">Selected SVG</h2>
+            <h2 id="preview-title">Preview</h2>
+            <p>The selected SVG updates as you switch colors.</p>
           </div>
 
-          <span class="size-pill">1024 × 1024</span>
+          <span class="size-pill">1024 x 1024</span>
         </div>
 
         <div id="preview-canvas" class="preview-canvas">
           <div id="preview-empty" class="preview-empty">
             <span class="preview-empty-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
+              <svg viewBox="0 0 24 24" focusable="false">
                 <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-13Zm2 0v9.18l2.64-2.64a2 2 0 0 1 2.83 0l.98.98 2.59-3.1a2 2 0 0 1 3.07 0L18 10.05V5.5a.5.5 0 0 0-.5-.5h-11a.5.5 0 0 0-.5.5Zm12 7.67-1.42-1.7-2.59 3.1a2 2 0 0 1-2.95.11l-.98-.98L6 17.76v.74a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-5.33Z"/>
               </svg>
             </span>
-
             <strong>Your badge will appear here</strong>
-            <span>Select a country, then choose one of its three options.</span>
+            <span>Choose a country to start.</span>
           </div>
 
           <div id="loading-state" class="loading-state" hidden aria-hidden="true">
             <span class="spinner"></span>
-            <span>Building the palette…</span>
+            <span>Building palette...</span>
           </div>
         </div>
-
-        <p class="preview-note">
-          Every country always produces the same three colors in the same order.
-        </p>
       </section>
     </section>
-
-    <section class="principles" aria-labelledby="principles-title">
-      <div>
-        <p class="eyebrow">Deterministic by design</p>
-        <h2 id="principles-title">Related colors without random results.</h2>
-      </div>
-
-      <ol class="principle-list">
-        <li>
-          <span>01</span>
-          <div>
-            <strong>Extract recognizable flag colors</strong>
-            <p>Dominant chromatic colors are ranked by visual importance.</p>
-          </div>
-        </li>
-
-        <li>
-          <span>02</span>
-          <div>
-            <strong>Transform them into polished backgrounds</strong>
-            <p>Each source hue is adjusted for saturation, lightness, and contrast.</p>
-          </div>
-        </li>
-
-        <li>
-          <span>03</span>
-          <div>
-            <strong>Keep the result stable</strong>
-            <p>No randomness, timestamps, or user-specific input affect the palette.</p>
-          </div>
-        </li>
-      </ol>
-    </section>
   </main>
-
-  <footer class="site-footer">
-    <span>Country Badge Generator</span>
-    <span>Flag artwork provided by FlagCDN.</span>
-  </footer>
 </body>
 </html>

@@ -1,5 +1,9 @@
 import {
-  createCountryCatalog,
+  fetchCountryCatalog
+} from "./country-service.js";
+
+import {
+  getDefaultSuggestions,
   normalizeSearch,
   searchCountries
 } from "./countries.js";
@@ -19,11 +23,14 @@ import {
 } from "./svg.js";
 
 const MAX_SUGGESTIONS = 8;
+const RECENT_COUNTRIES_KEY =
+  "country-badge-generator.recent-countries.v1";
 
 const elements = {
   input: document.querySelector("#country-search"),
   clearButton: document.querySelector("#clear-search"),
   countryOptions: document.querySelector("#country-options"),
+  countryStatus: document.querySelector("#country-status"),
   paletteOptions: document.querySelector("#palette-options"),
   paletteCountryCode: document.querySelector("#palette-country-code"),
   selectedCountry: document.querySelector("#selected-country"),
@@ -39,7 +46,8 @@ const elements = {
 };
 
 const state = {
-  catalog: createCountryCatalog(),
+  catalog: [],
+  catalogReady: false,
   countrySuggestions: [],
   activeSuggestionIndex: -1,
   selectedCountry: null,
@@ -49,17 +57,33 @@ const state = {
   selectedSvg: "",
   outputFileName: "",
   requestId: 0,
-  countryCache: new Map()
+  countryCache: new Map(),
+  activeAssetController: null
 };
 
-function setStatus(message, stateName = "") {
-  elements.status.textContent = message;
+function setMessage(element, message, stateName = "") {
+  element.textContent = message;
 
   if (stateName) {
-    elements.status.dataset.state = stateName;
+    element.dataset.state = stateName;
   } else {
-    delete elements.status.dataset.state;
+    delete element.dataset.state;
   }
+}
+
+function setStatus(message, stateName = "") {
+  setMessage(elements.status, message, stateName);
+}
+
+function setCountryStatus(message, stateName = "") {
+  setMessage(elements.countryStatus, message, stateName);
+}
+
+function setInputInvalid(isInvalid) {
+  elements.input.setAttribute(
+    "aria-invalid",
+    String(isInvalid)
+  );
 }
 
 function setLoading(isLoading) {
@@ -69,7 +93,6 @@ function setLoading(isLoading) {
     String(!isLoading)
   );
 
-  elements.input.disabled = isLoading;
   elements.downloadButton.disabled =
     isLoading || !state.selectedSvg;
   elements.copyButton.disabled =
@@ -82,6 +105,15 @@ function removeRenderedPreview() {
     ?.remove();
 }
 
+function renderEmptyPalette(message) {
+  elements.paletteOptions.replaceChildren();
+
+  const empty = document.createElement("div");
+  empty.className = "empty-state";
+  empty.textContent = message;
+  elements.paletteOptions.append(empty);
+}
+
 function resetGeneratedState() {
   state.flagSvgText = "";
   state.palette = [];
@@ -92,27 +124,60 @@ function resetGeneratedState() {
   removeRenderedPreview();
 
   elements.previewEmpty.hidden = false;
-  elements.paletteCountryCode.textContent = "—";
-  elements.selectedColor.textContent = "—";
+  elements.paletteCountryCode.textContent = "--";
+  elements.selectedColor.textContent = "--";
   elements.selectedSwatch.style.backgroundColor =
     "transparent";
-  elements.outputName.textContent = "—";
+  elements.outputName.textContent = "--";
   elements.downloadButton.disabled = true;
   elements.copyButton.disabled = true;
 
-  renderEmptyPalette();
+  renderEmptyPalette(
+    "Select a country to generate its palette."
+  );
 }
 
-function renderEmptyPalette() {
-  elements.paletteOptions.innerHTML = `
-    <div class="palette-empty">
-      Select a country to generate its three color options.
-    </div>
-  `;
+function getRecentCodes() {
+  try {
+    const parsed = JSON.parse(
+      sessionStorage.getItem(RECENT_COUNTRIES_KEY) ??
+        "[]"
+    );
+
+    return Array.isArray(parsed)
+      ? parsed.filter(code => /^[A-Z]{2}$/.test(code))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberCountry(code) {
+  try {
+    const recent = [
+      code,
+      ...getRecentCodes().filter(
+        recentCode => recentCode !== code
+      )
+    ].slice(0, MAX_SUGGESTIONS);
+
+    sessionStorage.setItem(
+      RECENT_COUNTRIES_KEY,
+      JSON.stringify(recent)
+    );
+  } catch {
+    // Recent suggestions are optional and should not block generation.
+  }
+}
+
+function abortActiveAssetRequest() {
+  state.activeAssetController?.abort();
+  state.activeAssetController = null;
 }
 
 function clearSelection({ focusInput = false } = {}) {
   state.requestId += 1;
+  abortActiveAssetRequest();
   state.selectedCountry = null;
   state.activeSuggestionIndex = -1;
 
@@ -120,20 +185,23 @@ function clearSelection({ focusInput = false } = {}) {
   elements.selectedCountry.textContent = "None";
   elements.clearButton.hidden = true;
 
+  setInputInvalid(false);
   closeCountrySuggestions();
   resetGeneratedState();
   setStatus("Choose a country to begin.");
+  setCountryStatus(
+    state.catalogReady
+      ? "Countries loaded."
+      : "Loading countries..."
+  );
 
   if (focusInput) {
     elements.input.focus();
+    updateCountrySuggestions();
   }
 }
 
 function openCountrySuggestions() {
-  if (state.countrySuggestions.length === 0) {
-    return;
-  }
-
   elements.countryOptions.hidden = false;
   elements.input.setAttribute(
     "aria-expanded",
@@ -154,14 +222,22 @@ function closeCountrySuggestions() {
   state.activeSuggestionIndex = -1;
 }
 
-function setActiveCountrySuggestion(index) {
-  const options = [
+function getRenderedOptions() {
+  return [
     ...elements.countryOptions.querySelectorAll(
       '[role="option"]'
     )
   ];
+}
+
+function setActiveCountrySuggestion(index) {
+  const options = getRenderedOptions();
 
   if (options.length === 0) {
+    elements.input.removeAttribute(
+      "aria-activedescendant"
+    );
+    state.activeSuggestionIndex = -1;
     return;
   }
 
@@ -193,11 +269,29 @@ function setActiveCountrySuggestion(index) {
   );
 }
 
+function renderNoResults() {
+  const item = document.createElement("li");
+  item.className = "country-no-results";
+  item.textContent = "No countries found.";
+
+  elements.countryOptions.append(item);
+  openCountrySuggestions();
+}
+
 function renderCountrySuggestions() {
   elements.countryOptions.replaceChildren();
+  state.activeSuggestionIndex = -1;
+  elements.input.removeAttribute(
+    "aria-activedescendant"
+  );
 
   if (state.countrySuggestions.length === 0) {
-    closeCountrySuggestions();
+    if (normalizeSearch(elements.input.value)) {
+      renderNoResults();
+    } else {
+      closeCountrySuggestions();
+    }
+
     return;
   }
 
@@ -246,14 +340,35 @@ function renderCountrySuggestions() {
   openCountrySuggestions();
 }
 
-function updateCountrySuggestions() {
-  state.countrySuggestions = searchCountries(
-    state.catalog,
-    elements.input.value,
-    MAX_SUGGESTIONS
-  );
+function updateCountrySuggestions({
+  activateFirst = false
+} = {}) {
+  if (!state.catalogReady) {
+    return;
+  }
+
+  const query = elements.input.value;
+
+  state.countrySuggestions = normalizeSearch(query)
+    ? searchCountries(
+        state.catalog,
+        query,
+        MAX_SUGGESTIONS
+      )
+    : getDefaultSuggestions(
+        state.catalog,
+        getRecentCodes(),
+        MAX_SUGGESTIONS
+      );
 
   renderCountrySuggestions();
+
+  if (
+    activateFirst &&
+    state.countrySuggestions.length > 0
+  ) {
+    setActiveCountrySuggestion(0);
+  }
 }
 
 function renderPalette() {
@@ -295,16 +410,15 @@ function renderPalette() {
       code: state.selectedCountry.code,
       countryName: state.selectedCountry.name,
       flagSvgText: state.flagSvgText,
-      backgroundHex: option.hex
+      backgroundHex: option.hex,
+      idPrefix:
+        `option-${state.selectedCountry.code.toLowerCase()}-${index}`
     });
 
     meta.className = "palette-meta";
 
     label.className = "palette-label";
-    label.textContent =
-      index === 0
-        ? `${option.label} · Recommended`
-        : option.label;
+    label.textContent = option.label;
 
     hex.className = "palette-hex";
     hex.textContent = option.hex;
@@ -332,7 +446,9 @@ function updateSelectedOption(index) {
     code: state.selectedCountry.code,
     countryName: state.selectedCountry.name,
     flagSvgText: state.flagSvgText,
-    backgroundHex: option.hex
+    backgroundHex: option.hex,
+    idPrefix:
+      `download-${state.selectedCountry.code.toLowerCase()}`
   });
 
   removeRenderedPreview();
@@ -369,7 +485,7 @@ function updateSelectedOption(index) {
   );
 }
 
-async function loadCountryAssets(country) {
+async function loadCountryAssets(country, signal) {
   const cached =
     state.countryCache.get(country.code);
 
@@ -377,14 +493,30 @@ async function loadCountryAssets(country) {
     return cached;
   }
 
-  const flagSvgText = await fetchFlagSvg(
-    country.code
-  );
+  const flagSvgText = await fetchFlagSvg({
+    countryCode: country.code,
+    flagUrl: country.flagUrl,
+    signal
+  });
+
+  if (signal.aborted) {
+    throw new DOMException(
+      "The request was cancelled.",
+      "AbortError"
+    );
+  }
 
   const palette =
     await createDeterministicPalette(
       flagSvgText
     );
+
+  if (signal.aborted) {
+    throw new DOMException(
+      "The request was cancelled.",
+      "AbortError"
+    );
+  }
 
   const assets = {
     flagSvgText,
@@ -401,17 +533,20 @@ async function loadCountryAssets(country) {
 
 async function selectCountry(country) {
   const requestId = ++state.requestId;
+  abortActiveAssetRequest();
+
+  const controller = new AbortController();
+  state.activeAssetController = controller;
 
   state.selectedCountry = country;
   state.selectedPaletteIndex = 0;
 
+  rememberCountry(country.code);
+  setInputInvalid(false);
+
   elements.input.value = country.name;
   elements.selectedCountry.textContent =
     country.name;
-
-  elements.paletteCountryCode.textContent =
-    country.code;
-
   elements.clearButton.hidden = false;
 
   closeCountrySuggestions();
@@ -419,18 +554,23 @@ async function selectCountry(country) {
 
   elements.selectedCountry.textContent =
     country.name;
-
   elements.paletteCountryCode.textContent =
     country.code;
 
   setLoading(true);
+  setCountryStatus(
+    `${country.name} selected.`,
+    "success"
+  );
   setStatus(
-    `Generating ${country.code} palette…`
+    `Generating ${country.code} palette...`
   );
 
   try {
-    const assets =
-      await loadCountryAssets(country);
+    const assets = await loadCountryAssets(
+      country,
+      controller.signal
+    );
 
     if (requestId !== state.requestId) {
       return;
@@ -447,7 +587,10 @@ async function selectCountry(country) {
       "success"
     );
   } catch (error) {
-    if (requestId !== state.requestId) {
+    if (
+      requestId !== state.requestId ||
+      error?.name === "AbortError"
+    ) {
       return;
     }
 
@@ -455,7 +598,6 @@ async function selectCountry(country) {
 
     elements.selectedCountry.textContent =
       country.name;
-
     elements.paletteCountryCode.textContent =
       country.code;
 
@@ -467,16 +609,8 @@ async function selectCountry(country) {
     );
   } finally {
     if (requestId === state.requestId) {
+      state.activeAssetController = null;
       setLoading(false);
-      elements.input.focus();
-
-      const cursorPosition =
-        elements.input.value.length;
-
-      elements.input.setSelectionRange(
-        cursorPosition,
-        cursorPosition
-      );
     }
   }
 }
@@ -488,6 +622,20 @@ function selectCountrySuggestion(index) {
   if (country) {
     selectCountry(country);
   }
+}
+
+function invalidateSelectedCountry() {
+  if (!state.selectedCountry) {
+    return;
+  }
+
+  state.requestId += 1;
+  abortActiveAssetRequest();
+  state.selectedCountry = null;
+  elements.selectedCountry.textContent =
+    "None";
+
+  resetGeneratedState();
 }
 
 function handleCountryInput() {
@@ -508,17 +656,32 @@ function handleCountryInput() {
     state.selectedCountry &&
     normalizedInput !== normalizedSelection
   ) {
-    state.selectedCountry = null;
-    elements.selectedCountry.textContent =
-      "None";
-
-    resetGeneratedState();
+    invalidateSelectedCountry();
     setStatus(
-      "Choose one of the country suggestions."
+      "Select a listed country before generating a badge.",
+      "warning"
     );
   }
 
+  setInputInvalid(false);
   updateCountrySuggestions();
+}
+
+function validateFreeText() {
+  if (
+    !state.selectedCountry &&
+    normalizeSearch(elements.input.value)
+  ) {
+    setInputInvalid(true);
+    setCountryStatus(
+      "Select a listed country. Free text is not accepted.",
+      "warning"
+    );
+    return false;
+  }
+
+  setInputInvalid(false);
+  return true;
 }
 
 function handleCountryKeydown(event) {
@@ -538,6 +701,10 @@ function handleCountryKeydown(event) {
   if (event.key === "ArrowUp") {
     event.preventDefault();
 
+    if (elements.countryOptions.hidden) {
+      updateCountrySuggestions();
+    }
+
     setActiveCountrySuggestion(
       state.activeSuggestionIndex <= 0
         ? state.countrySuggestions.length - 1
@@ -546,160 +713,219 @@ function handleCountryKeydown(event) {
     return;
   }
 
-  if (
-    event.key === "Enter" &&
-    !elements.countryOptions.hidden &&
-    state.activeSuggestionIndex >= 0
-  ) {
+  if (event.key === "Home" && !elements.countryOptions.hidden) {
     event.preventDefault();
+    setActiveCountrySuggestion(0);
+    return;
+  }
 
-    selectCountrySuggestion(
-      state.activeSuggestionIndex
+  if (event.key === "End" && !elements.countryOptions.hidden) {
+    event.preventDefault();
+    setActiveCountrySuggestion(
+      state.countrySuggestions.length - 1
     );
+    return;
+  }
+
+  if (event.key === "Enter") {
+    if (
+      !elements.countryOptions.hidden &&
+      state.countrySuggestions.length > 0
+    ) {
+      event.preventDefault();
+
+      selectCountrySuggestion(
+        state.activeSuggestionIndex >= 0
+          ? state.activeSuggestionIndex
+          : 0
+      );
+    }
+
     return;
   }
 
   if (event.key === "Escape") {
     closeCountrySuggestions();
+    return;
+  }
+
+  if (event.key === "Tab") {
+    closeCountrySuggestions();
+    validateFreeText();
   }
 }
 
-elements.input.addEventListener(
-  "input",
-  handleCountryInput
-);
+function bindEvents() {
+  elements.input.addEventListener(
+    "input",
+    handleCountryInput
+  );
 
-elements.input.addEventListener(
-  "focus",
-  () => {
-    if (
-      elements.input.value &&
-      !state.selectedCountry
-    ) {
+  elements.input.addEventListener(
+    "focus",
+    () => {
       updateCountrySuggestions();
     }
-  }
-);
+  );
 
-elements.input.addEventListener(
-  "keydown",
-  handleCountryKeydown
-);
+  elements.input.addEventListener(
+    "blur",
+    validateFreeText
+  );
 
-elements.clearButton.addEventListener(
-  "click",
-  () => {
-    clearSelection({
-      focusInput: true
-    });
-  }
-);
+  elements.input.addEventListener(
+    "keydown",
+    handleCountryKeydown
+  );
 
-elements.countryOptions.addEventListener(
-  "pointerdown",
-  event => {
-    const option = event.target.closest(
-      '[role="option"]'
-    );
-
-    if (!option) {
-      return;
+  elements.clearButton.addEventListener(
+    "click",
+    () => {
+      clearSelection({
+        focusInput: true
+      });
     }
+  );
 
-    event.preventDefault();
+  elements.countryOptions.addEventListener(
+    "pointerdown",
+    event => {
+      const option = event.target.closest(
+        '[role="option"]'
+      );
 
-    selectCountrySuggestion(
-      Number(option.dataset.index)
-    );
-  }
-);
+      if (!option) {
+        return;
+      }
 
-elements.countryOptions.addEventListener(
-  "pointermove",
-  event => {
-    const option = event.target.closest(
-      '[role="option"]'
-    );
+      event.preventDefault();
 
-    if (!option) {
-      return;
+      selectCountrySuggestion(
+        Number(option.dataset.index)
+      );
     }
+  );
 
-    setActiveCountrySuggestion(
-      Number(option.dataset.index)
-    );
-  }
-);
+  elements.countryOptions.addEventListener(
+    "pointermove",
+    event => {
+      const option = event.target.closest(
+        '[role="option"]'
+      );
 
-elements.paletteOptions.addEventListener(
-  "click",
-  event => {
-    const option = event.target.closest(
-      ".palette-option"
-    );
+      if (!option) {
+        return;
+      }
 
-    if (!option) {
-      return;
+      setActiveCountrySuggestion(
+        Number(option.dataset.index)
+      );
     }
+  );
 
-    updateSelectedOption(
-      Number(option.dataset.index)
-    );
-  }
-);
+  elements.paletteOptions.addEventListener(
+    "click",
+    event => {
+      const option = event.target.closest(
+        ".palette-option"
+      );
 
-elements.downloadButton.addEventListener(
-  "click",
-  () => {
-    if (
-      !state.selectedSvg ||
-      !state.outputFileName
-    ) {
-      return;
+      if (!option) {
+        return;
+      }
+
+      updateSelectedOption(
+        Number(option.dataset.index)
+      );
     }
+  );
 
-    downloadSvg(
-      state.outputFileName,
-      state.selectedSvg
-    );
+  elements.downloadButton.addEventListener(
+    "click",
+    () => {
+      if (
+        !state.selectedSvg ||
+        !state.outputFileName
+      ) {
+        return;
+      }
 
-    setStatus(
-      `Downloaded ${state.outputFileName}.`,
-      "success"
-    );
-  }
-);
-
-elements.copyButton.addEventListener(
-  "click",
-  async () => {
-    if (!state.selectedSvg) {
-      return;
-    }
-
-    try {
-      await copyText(state.selectedSvg);
+      downloadSvg(
+        state.outputFileName,
+        state.selectedSvg
+      );
 
       setStatus(
-        "SVG copied to the clipboard.",
+        `Downloaded ${state.outputFileName}.`,
         "success"
       );
-    } catch {
-      setStatus(
-        "The SVG could not be copied in this browser.",
-        "error"
-      );
     }
-  }
-);
+  );
 
-document.addEventListener(
-  "pointerdown",
-  event => {
-    if (!event.target.closest(".combobox")) {
-      closeCountrySuggestions();
+  elements.copyButton.addEventListener(
+    "click",
+    async () => {
+      if (!state.selectedSvg) {
+        return;
+      }
+
+      try {
+        await copyText(state.selectedSvg);
+
+        setStatus(
+          "SVG copied to the clipboard.",
+          "success"
+        );
+      } catch {
+        setStatus(
+          "The SVG could not be copied in this browser.",
+          "error"
+        );
+      }
     }
-  }
-);
+  );
 
-clearSelection();
+  document.addEventListener(
+    "pointerdown",
+    event => {
+      if (!event.target.closest(".combobox")) {
+        closeCountrySuggestions();
+      }
+    }
+  );
+}
+
+async function initialize() {
+  bindEvents();
+  resetGeneratedState();
+  setLoading(false);
+  elements.input.disabled = true;
+  setCountryStatus("Loading countries...");
+  setStatus("Loading countries...");
+
+  try {
+    state.catalog = await fetchCountryCatalog();
+    state.catalogReady = true;
+    elements.input.disabled = false;
+    setCountryStatus(
+      "Countries loaded.",
+      "success"
+    );
+    setStatus("Choose a country to begin.");
+  } catch (error) {
+    state.catalogReady = false;
+    elements.input.disabled = true;
+    setCountryStatus(
+      error instanceof Error
+        ? error.message
+        : "The country list could not be loaded.",
+      "error"
+    );
+    setStatus(
+      "Country search is unavailable until the country list loads.",
+      "error"
+    );
+  }
+}
+
+initialize();
