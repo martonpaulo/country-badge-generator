@@ -1,0 +1,125 @@
+const SVG_SIZE = 1024;
+const FLAG_BOX_WIDTH = 620;
+const FLAG_BOX_HEIGHT = 390;
+
+function escapeXml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function textToBase64(value) {
+  const bytes = new TextEncoder().encode(value);
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (
+    let index = 0;
+    index < bytes.length;
+    index += chunkSize
+  ) {
+    binary += String.fromCharCode(
+      ...bytes.subarray(index, index + chunkSize)
+    );
+  }
+
+  return btoa(binary);
+}
+
+export function createBadgeSvg({
+  code,
+  countryName,
+  flagSvgText,
+  backgroundHex
+}) {
+  const flagX = (SVG_SIZE - FLAG_BOX_WIDTH) / 2;
+  const flagY = (SVG_SIZE - FLAG_BOX_HEIGHT) / 2;
+  const flagData = textToBase64(flagSvgText);
+
+  return `<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="${SVG_SIZE}"
+  height="${SVG_SIZE}"
+  viewBox="0 0 ${SVG_SIZE} ${SVG_SIZE}"
+  role="img"
+  aria-labelledby="title description"
+>
+  <title id="title">${escapeXml(countryName)} country badge</title>
+  <desc id="description">${escapeXml(code)} flag centered on a deterministic flag-inspired background.</desc>
+
+  <defs>
+    <filter
+      id="flag-shadow"
+      x="-35%"
+      y="-45%"
+      width="170%"
+      height="190%"
+      color-interpolation-filters="sRGB"
+    >
+      <feDropShadow
+        dx="0"
+        dy="24"
+        stdDeviation="22"
+        flood-color="#000000"
+        flood-opacity="0.28"
+      />
+    </filter>
+  </defs>
+
+  <rect
+    width="${SVG_SIZE}"
+    height="${SVG_SIZE}"
+    fill="${backgroundHex}"
+  />
+
+  <image
+    href="data:image/svg+xml;base64,${flagData}"
+    x="${flagX}"
+    y="${flagY}"
+    width="${FLAG_BOX_WIDTH}"
+    height="${FLAG_BOX_HEIGHT}"
+    preserveAspectRatio="xMidYMid meet"
+    filter="url(#flag-shadow)"
+  />
+</svg>`;
+}
+
+export function downloadSvg(fileName, svgText) {
+  const blob = new Blob([svgText], {
+    type: "image/svg+xml;charset=utf-8"
+  });
+
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+
+  window.setTimeout(
+    () => URL.revokeObjectURL(objectUrl),
+    0
+  );
+}
+
+export async function copyText(value) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+
+  document.body.append(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
