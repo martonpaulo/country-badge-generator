@@ -6,8 +6,15 @@ import {
 const testedCountries = [
   { name: "Paraguay", code: "PY" },
   { name: "Brazil", code: "BR" },
+  { name: "Bolivia", code: "BO" },
   { name: "Spain", code: "ES" }
 ];
+
+const forbiddenBackgrounds = new Set([
+  "#FFFFFF",
+  "#94A3B8",
+  "#334155"
+]);
 
 async function installDiagnostics(page) {
   const diagnostics = {
@@ -170,6 +177,7 @@ test("generates deterministic palettes, previews every option, and downloads sel
 
     for (const hex of hexes) {
       expect(hex).toMatch(/^#[0-9A-F]{6}$/);
+      expect(forbiddenBackgrounds.has(hex)).toBe(false);
     }
 
     const distances = await page.evaluate(async colors => {
@@ -267,6 +275,27 @@ test("generates deterministic palettes, previews every option, and downloads sel
 
   expect(diagnostics.consoleErrors).toEqual([]);
   expect(diagnostics.failedRequests).toEqual([]);
+});
+
+test("curated palettes preserve clear flag color families", async ({ page }) => {
+  await openApp(page);
+
+  const hexes = await page.evaluate(async () => {
+    const { createDeterministicPalette } = await import("./js/palette.js");
+    const flagSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3 3">
+      <rect width="3" height="1" fill="#D52B1E"/>
+      <rect y="1" width="3" height="1" fill="#F9E300"/>
+      <rect y="2" width="3" height="1" fill="#007934"/>
+    </svg>`;
+
+    return createDeterministicPalette(flagSvg)
+      .then(palette => palette.map(option => option.hex));
+  });
+
+  expect(hexes).toHaveLength(3);
+  expect(hexes).toContain("#EF4444");
+  expect(hexes).toContain("#FACC15");
+  expect(hexes).toContain("#22C55E");
 });
 
 test("layout remains usable at desktop and mobile viewports", async ({ page, viewport }) => {
