@@ -153,7 +153,7 @@ Never invent a product decision, a provenance label, or a new `status:` value.
 
 ## Automatic merge
 
-Auto-merge: DISARMED — no required status checks on `main`; arming is forbidden until they exist.
+Auto-merge: available under the predicates below.
 
 **You do not merge, and you do not arm auto-merge.** `skd merge` is the single actor. It
 evaluates the predicates -- CI green on the exact reviewed commit, an approved review from a
