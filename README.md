@@ -38,10 +38,17 @@ Both remote sources are requested directly from the browser, require no API key,
 
 ## Local Development
 
-Install development-only test dependencies:
+Requirements:
+
+- Node.js 24
+- npm
+- Network access for the initial country catalog, uncached flags, and the first Playwright browser installation
+
+Install the exact development dependencies and Chromium for Testing:
 
 ```bash
-npm install
+npm ci
+npx playwright install chromium
 ```
 
 Serve the app over HTTP:
@@ -73,6 +80,28 @@ http://127.0.0.1:4173/country-badge-generator/
 ```
 
 That mirrors the GitHub Pages repository subpath.
+
+Browser acceptance targets the Playwright-owned Chromium for Testing build. Brave, Gecko, WebKit,
+and installed branded Chrome builds are not acceptance targets.
+
+## Privacy and Security
+
+- Badge generation and export run entirely in the browser.
+- The browser requests country data from jsDelivr and flag SVGs from FlagCDN.
+- The app uses `sessionStorage` for the country-data cache and up to eight recent country codes.
+- The project has no account, analytics, backend, environment variables, API keys, or application secrets.
+- Clipboard writes occur only after the user selects **Copy SVG** and remain subject to browser permission.
+
+## Limitations
+
+- The initial country catalog and uncached flags require network access.
+- Availability and CORS behavior of the two documented data sources remain external dependencies.
+- Browser behavior outside the recorded Chromium acceptance target is unverified.
+
+## Project Contract
+
+See [`docs/product.md`](./docs/product.md) for the product boundary and [`AGENTS.md`](./AGENTS.md)
+for repository policy, validation, and contribution rules.
 
 ## GitHub Pages Deployment
 
