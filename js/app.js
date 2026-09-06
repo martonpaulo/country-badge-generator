@@ -51,6 +51,7 @@ const elements = {
   clearButton: document.querySelector("#clear-search"),
   countryOptions: document.querySelector("#country-options"),
   countryStatus: document.querySelector("#country-status"),
+  countryRetry: document.querySelector("#country-retry"),
   paletteOptions: document.querySelector("#palette-options"),
   paletteCountryCode: document.querySelector("#palette-country-code"),
   selectedCountry: document.querySelector("#selected-country"),
@@ -70,6 +71,9 @@ const elements = {
 const state = {
   catalog: [],
   catalogReady: false,
+  catalogAttemptId: 0,
+  catalogLoading: false,
+  catalogRetryHadFocus: false,
   countrySuggestions: [],
   activeSuggestionIndex: -1,
   selectedCountry: null,
@@ -968,6 +972,13 @@ function bindEvents() {
     }
   );
 
+  elements.countryRetry.addEventListener(
+    "click",
+    () => {
+      loadCountryCatalog({ isRetry: true });
+    }
+  );
+
   elements.formatOptions.addEventListener(
     "change",
     handleFormatChange
@@ -1011,37 +1022,131 @@ function bindEvents() {
   );
 }
 
+// Disabling the in-flight retry control drops focus to the body, so the
+// attempt records whether focus was its own to give back when it settles.
+function claimRetryFocus() {
+  return document.activeElement === elements.countryRetry;
+}
+
+// True while nothing else holds focus: either the body received it when the
+// retry control was disabled, or the control itself still has it.
+function retryFocusIsUnclaimed() {
+  const active = document.activeElement;
+
+  return (
+    !active ||
+    active === document.body ||
+    active === elements.countryRetry
+  );
+}
+
+function applyCatalogAttemptState(isRetry) {
+  state.catalogReady = false;
+  state.catalog = [];
+  elements.input.disabled = true;
+
+  state.catalogRetryHadFocus = claimRetryFocus();
+
+  // A failed attempt keeps its control on screen so the retry stays discoverable.
+  elements.countryRetry.hidden = !isRetry;
+  elements.countryRetry.disabled = true;
+
+  const message = isRetry
+    ? "Retrying the country list..."
+    : "Loading countries...";
+
+  setCountryStatus(message);
+  setStatus(message);
+}
+
+function applyCatalogReadyState(catalog, shouldRestoreFocus) {
+  state.catalog = catalog;
+  state.catalogReady = true;
+
+  elements.countryRetry.hidden = true;
+  elements.countryRetry.disabled = false;
+  elements.input.disabled = false;
+
+  setCountryStatus(
+    "Countries loaded.",
+    "success"
+  );
+  setStatus("Choose a country to begin.");
+
+  if (shouldRestoreFocus) {
+    elements.input.focus();
+  }
+}
+
+function applyCatalogErrorState(error, shouldRestoreFocus) {
+  state.catalog = [];
+  state.catalogReady = false;
+  elements.input.disabled = true;
+
+  elements.countryRetry.hidden = false;
+  elements.countryRetry.disabled = false;
+
+  setCountryStatus(
+    error instanceof Error
+      ? error.message
+      : "The country list could not be loaded.",
+    "error"
+  );
+  setStatus(
+    "Country search is unavailable until the country list loads.",
+    "error"
+  );
+
+  if (shouldRestoreFocus) {
+    elements.countryRetry.focus();
+  }
+}
+
+// A retry only takes focus back when the user has not moved it elsewhere
+// while the request was in flight.
+function shouldRestoreRetryFocus() {
+  return state.catalogRetryHadFocus && retryFocusIsUnclaimed();
+}
+
+async function loadCountryCatalog({ isRetry = false } = {}) {
+  if (state.catalogLoading) {
+    return;
+  }
+
+  state.catalogLoading = true;
+  state.catalogAttemptId += 1;
+
+  const attemptId = state.catalogAttemptId;
+
+  applyCatalogAttemptState(isRetry);
+
+  try {
+    const catalog = await fetchCountryCatalog();
+
+    if (attemptId !== state.catalogAttemptId) {
+      return;
+    }
+
+    applyCatalogReadyState(catalog, shouldRestoreRetryFocus());
+  } catch (error) {
+    if (attemptId !== state.catalogAttemptId) {
+      return;
+    }
+
+    applyCatalogErrorState(error, shouldRestoreRetryFocus());
+  } finally {
+    if (attemptId === state.catalogAttemptId) {
+      state.catalogLoading = false;
+    }
+  }
+}
+
 async function initialize() {
   bindEvents();
   resetGeneratedState();
   setLoading(false);
-  elements.input.disabled = true;
-  setCountryStatus("Loading countries...");
-  setStatus("Loading countries...");
 
-  try {
-    state.catalog = await fetchCountryCatalog();
-    state.catalogReady = true;
-    elements.input.disabled = false;
-    setCountryStatus(
-      "Countries loaded.",
-      "success"
-    );
-    setStatus("Choose a country to begin.");
-  } catch (error) {
-    state.catalogReady = false;
-    elements.input.disabled = true;
-    setCountryStatus(
-      error instanceof Error
-        ? error.message
-        : "The country list could not be loaded.",
-      "error"
-    );
-    setStatus(
-      "Country search is unavailable until the country list loads.",
-      "error"
-    );
-  }
+  await loadCountryCatalog();
 }
 
 initialize();

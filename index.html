@@ -84,9 +84,20 @@
           <p id="country-help" class="field-help">
             Select a listed result. Typed text alone is not a valid country.
           </p>
-          <p id="country-status" class="field-status" aria-live="polite">
-            Loading countries...
-          </p>
+          <div class="field-status-row">
+            <p id="country-status" class="field-status" aria-live="polite">
+              Loading countries...
+            </p>
+
+            <button
+              id="country-retry"
+              class="button button-secondary retry-button"
+              type="button"
+              hidden
+            >
+              Try again
+            </button>
+          </div>
         </div>
 
         <section class="palette-section" aria-labelledby="palette-title">
