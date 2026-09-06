@@ -381,6 +381,18 @@
     margin-top: 4px;
   }
 
+  .field-status-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .retry-button {
+    flex: 0 0 auto;
+    margin-top: 4px;
+  }
+
   .field-status[data-state="error"],
   .status-message[data-state="error"] {
     color: var(--danger);

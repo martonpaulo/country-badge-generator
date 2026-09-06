@@ -332,7 +332,7 @@ test("layout remains usable at desktop and mobile viewports", async ({ page, vie
     await page.locator("#download-button").scrollIntoViewIfNeeded();
     await expect(page.locator("#download-button")).toBeInViewport();
 
-    const touchTargets = await page.locator(".button, #country-search, .palette-option").evaluateAll(elements =>
+    const touchTargets = await page.locator(".button:visible, #country-search, .palette-option").evaluateAll(elements =>
       elements.map(element => {
         const rect = element.getBoundingClientRect();
         return {
@@ -344,4 +344,177 @@ test("layout remains usable at desktop and mobile viewports", async ({ page, vie
 
     expect(touchTargets.every(rect => rect.height >= 44)).toBe(true);
   }
+});
+
+const COUNTRY_DATA_PATTERN =
+  "**/world-countries@*/dist/countries.json";
+
+function createCatalogPayload() {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const payload = [
+    {
+      cca2: "BR",
+      name: {
+        common: "Brazil",
+        official: "Federative Republic of Brazil"
+      }
+    },
+    {
+      cca2: "PY",
+      name: {
+        common: "Paraguay",
+        official: "Republic of Paraguay"
+      }
+    }
+  ];
+
+  const usedCodes = new Set(payload.map(country => country.cca2));
+
+  for (const first of letters) {
+    for (const second of letters) {
+      const code = `${first}${second}`;
+
+      if (usedCodes.has(code)) {
+        continue;
+      }
+
+      usedCodes.add(code);
+      payload.push({
+        cca2: code,
+        name: {
+          common: `Country ${code}`,
+          official: `Country ${code}`
+        }
+      });
+
+      if (payload.length >= 120) {
+        return payload;
+      }
+    }
+  }
+
+  return payload;
+}
+
+function createGate() {
+  let release;
+  const promise = new Promise(resolve => {
+    release = resolve;
+  });
+
+  return { promise, release };
+}
+
+// Serves the catalog request from a local plan so failure and recovery are
+// deterministic and no live CDN is involved.
+async function installCatalogRoute(page, plan) {
+  const tracker = { attempts: 0 };
+
+  await page.route(COUNTRY_DATA_PATTERN, async route => {
+    const step = plan[Math.min(tracker.attempts, plan.length - 1)];
+
+    tracker.attempts += 1;
+
+    if (step.gate) {
+      await step.gate;
+    }
+
+    if (step.ok) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(createCatalogPayload())
+      });
+
+      return;
+    }
+
+    await route.abort("failed");
+  });
+
+  return tracker;
+}
+
+async function expectCatalogFailureState(page) {
+  await expect(page.locator("#country-status")).toHaveText(
+    "The country list could not be loaded. Check the connection and try again."
+  );
+  await expect(page.locator("#country-status")).toHaveAttribute("data-state", "error");
+  await expect(page.locator("#country-search")).toBeDisabled();
+  await expect(page.locator("#country-retry")).toBeVisible();
+  await expect(page.locator("#country-retry")).toBeEnabled();
+  await expect(page.locator("#status-message")).toHaveText(
+    "Country search is unavailable until the country list loads."
+  );
+
+  const overflows = await page.evaluate(() =>
+    document.documentElement.scrollWidth > window.innerWidth
+  );
+
+  expect(overflows).toBe(false);
+}
+
+test("a failed catalog load recovers through the in-page retry control", async ({ page }) => {
+  const gate = createGate();
+  const tracker = await installCatalogRoute(page, [
+    { ok: false },
+    { ok: true, gate: gate.promise }
+  ]);
+
+  await page.goto("./", { waitUntil: "load" });
+
+  await expectCatalogFailureState(page);
+  expect(tracker.attempts).toBe(1);
+
+  const retry = page.locator("#country-retry");
+
+  await retry.focus();
+  await retry.press("Enter");
+
+  await expect(page.locator("#country-status")).toHaveText("Retrying the country list...");
+  await expect(retry).toBeDisabled();
+
+  // A second activation while one attempt is in flight must not start another request.
+  await page.locator("#country-retry").dispatchEvent("click");
+  expect(tracker.attempts).toBe(2);
+
+  gate.release();
+
+  const input = page.locator("#country-search");
+
+  await expect(input).toBeEnabled();
+  await expect(page.locator("#country-status")).toHaveText("Countries loaded.");
+  await expect(page.locator("#country-status")).toHaveAttribute("data-state", "success");
+  await expect(page.locator("#status-message")).toHaveText("Choose a country to begin.");
+  await expect(retry).toBeHidden();
+  await expect(input).toBeFocused();
+  expect(tracker.attempts).toBe(2);
+
+  await input.fill("Paraguay");
+  await expect(page.locator("#country-options [role='option']").first()).toContainText("PY");
+});
+
+test("a repeated catalog failure stays retryable and never reports success", async ({ page }) => {
+  const tracker = await installCatalogRoute(page, [{ ok: false }]);
+
+  await page.goto("./", { waitUntil: "load" });
+
+  await expectCatalogFailureState(page);
+  expect(tracker.attempts).toBe(1);
+
+  const retry = page.locator("#country-retry");
+
+  await retry.focus();
+  await retry.press("Enter");
+
+  await expect(page.locator("#country-status")).toHaveAttribute("data-state", "error");
+  await expectCatalogFailureState(page);
+  await expect(retry).toBeFocused();
+  expect(tracker.attempts).toBe(2);
+
+  await retry.press("Enter");
+
+  await expectCatalogFailureState(page);
+  await expect(retry).toBeFocused();
+  expect(tracker.attempts).toBe(3);
 });
