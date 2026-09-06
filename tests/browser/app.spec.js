@@ -518,3 +518,53 @@ test("a repeated catalog failure stays retryable and never reports success", asy
   await expect(retry).toBeFocused();
   expect(tracker.attempts).toBe(3);
 });
+
+test("a settling retry leaves focus the user moved elsewhere alone", async ({ page }) => {
+  const failureGate = createGate();
+  const successGate = createGate();
+  const tracker = await installCatalogRoute(page, [
+    { ok: false },
+    { ok: false, gate: failureGate.promise },
+    { ok: true, gate: successGate.promise }
+  ]);
+
+  await page.goto("./", { waitUntil: "load" });
+  await expectCatalogFailureState(page);
+
+  const retry = page.locator("#country-retry");
+  const pngFormat = page.locator("#format-options input[value='png']");
+  const jpgFormat = page.locator("#format-options input[value='jpg']");
+
+  // A failing retry must not pull focus off a control the user chose while waiting.
+  await retry.focus();
+  await retry.press("Enter");
+  await expect(page.locator("#country-status")).toHaveText("Retrying the country list...");
+
+  await pngFormat.focus();
+  await expect(pngFormat).toBeFocused();
+
+  failureGate.release();
+
+  await expectCatalogFailureState(page);
+  await expect(pngFormat).toBeFocused();
+  expect(tracker.attempts).toBe(2);
+
+  // A succeeding retry must not pull focus away either, and must not open the
+  // suggestion list over the control the user is actually operating.
+  await retry.focus();
+  await retry.press("Enter");
+  await expect(page.locator("#country-status")).toHaveText("Retrying the country list...");
+
+  await jpgFormat.focus();
+  await expect(jpgFormat).toBeFocused();
+
+  successGate.release();
+
+  const input = page.locator("#country-search");
+
+  await expect(input).toBeEnabled();
+  await expect(page.locator("#country-status")).toHaveText("Countries loaded.");
+  await expect(jpgFormat).toBeFocused();
+  await expect(page.locator("#country-options")).toBeHidden();
+  expect(tracker.attempts).toBe(3);
+});

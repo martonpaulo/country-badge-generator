@@ -73,6 +73,7 @@ const state = {
   catalogReady: false,
   catalogAttemptId: 0,
   catalogLoading: false,
+  catalogRetryHadFocus: false,
   countrySuggestions: [],
   activeSuggestionIndex: -1,
   selectedCountry: null,
@@ -1021,10 +1022,30 @@ function bindEvents() {
   );
 }
 
+// Disabling the in-flight retry control drops focus to the body, so the
+// attempt records whether focus was its own to give back when it settles.
+function claimRetryFocus() {
+  return document.activeElement === elements.countryRetry;
+}
+
+// True while nothing else holds focus: either the body received it when the
+// retry control was disabled, or the control itself still has it.
+function retryFocusIsUnclaimed() {
+  const active = document.activeElement;
+
+  return (
+    !active ||
+    active === document.body ||
+    active === elements.countryRetry
+  );
+}
+
 function applyCatalogAttemptState(isRetry) {
   state.catalogReady = false;
   state.catalog = [];
   elements.input.disabled = true;
+
+  state.catalogRetryHadFocus = claimRetryFocus();
 
   // A failed attempt keeps its control on screen so the retry stays discoverable.
   elements.countryRetry.hidden = !isRetry;
@@ -1081,6 +1102,12 @@ function applyCatalogErrorState(error, shouldRestoreFocus) {
   }
 }
 
+// A retry only takes focus back when the user has not moved it elsewhere
+// while the request was in flight.
+function shouldRestoreRetryFocus() {
+  return state.catalogRetryHadFocus && retryFocusIsUnclaimed();
+}
+
 async function loadCountryCatalog({ isRetry = false } = {}) {
   if (state.catalogLoading) {
     return;
@@ -1100,13 +1127,13 @@ async function loadCountryCatalog({ isRetry = false } = {}) {
       return;
     }
 
-    applyCatalogReadyState(catalog, isRetry);
+    applyCatalogReadyState(catalog, shouldRestoreRetryFocus());
   } catch (error) {
     if (attemptId !== state.catalogAttemptId) {
       return;
     }
 
-    applyCatalogErrorState(error, isRetry);
+    applyCatalogErrorState(error, shouldRestoreRetryFocus());
   } finally {
     if (attemptId === state.catalogAttemptId) {
       state.catalogLoading = false;
