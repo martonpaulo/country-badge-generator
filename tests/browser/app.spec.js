@@ -346,6 +346,19 @@ test("layout remains usable at desktop and mobile viewports", async ({ page, vie
   }
 });
 
+test("the source note credits both data sources", async ({ page, viewport }) => {
+  await openApp(page);
+
+  const sourceNote = page.locator(".source-note");
+
+  await expect(sourceNote).toContainText("world-countries");
+  await expect(sourceNote).toContainText("FlagCDN");
+
+  if (viewport.width > 640) {
+    await expect(sourceNote).toBeVisible();
+  }
+});
+
 const COUNTRY_DATA_PATTERN =
   "**/world-countries@*/dist/countries.json";
 
