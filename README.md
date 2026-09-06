@@ -16,17 +16,29 @@ A fully static GitHub Pages app for creating square country badges. Search a cou
 
 ## Deterministic Palette
 
-The same country always produces the same three colors in the same order.
+Every background is chosen from a fixed curated catalog of colors declared in `js/palette.js`. The
+flag decides which catalog entries are chosen, never the color values themselves.
 
 1. The selected flag SVG is fetched in the browser.
-2. The flag is rasterized into a small offscreen canvas.
-3. Visible pixels are sampled and quantized.
-4. Low-value near-white, near-black, and tiny detail colors are down-ranked.
-5. Distinct chromatic source colors are selected.
-6. Source hues are adjusted in OKLCH for controlled lightness and chroma.
-7. Candidate backgrounds are scored for contrast, perceptual distance, and palette separation.
+2. The flag is rasterized into a small offscreen canvas sized from its aspect ratio.
+3. Every second pixel is sampled, pixels below the alpha threshold are ignored, and the remaining
+   channels are quantized into a weighted histogram.
+4. Histogram entries are ranked by coverage, near-black and near-white tones are down-ranked,
+   saturated tones are favored, perceptually close entries are merged by OKLab distance, and at most
+   eighteen source colors are kept.
+5. Each source color is classified into a hue family, or into `light` or `dark` when it has too
+   little saturation. Saturation-weighted family totals then select up to three target families,
+   collapsing near-duplicate families and adding a related family or a light tint when the flag
+   yields too few.
+6. For each target, the curated candidates of that family and its alternates are scored on family
+   match, the family's planned tone order, family weight, proximity to the source colors, contrast
+   against them, and a penalty for OKLab closeness to the options already selected.
+7. The highest-scoring candidate wins each target, with ties broken by catalog order.
 
-No randomness, date, time, locale, user state, backend, or secrets affect the palette.
+For the same fetched flag asset and the same curated catalog, a country always produces the same
+three colors in the same order. No randomness, date, time, locale, user state, backend, or secrets
+affect the palette. A result can change when the upstream flag artwork changes, when the curated
+catalog is revised, or when a browser rasterizes the same flag differently.
 
 ## Data Sources
 
